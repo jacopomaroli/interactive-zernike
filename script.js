@@ -591,6 +591,10 @@ class ZernikeVisualizer {
         };
         
         const surface = new THREE.Mesh(geometry, material);
+        
+        // Rotate the surface 90 degrees around X-axis to face upward
+        surface.rotation.x = -Math.PI / 2;
+        
         scene.add(surface);
         
         // Position camera at 45-degree angle
@@ -602,13 +606,13 @@ class ZernikeVisualizer {
         scene.add(axesHelper);
         
         // Add grid helper for better spatial reference
-        const gridHelper = new THREE.GridHelper(2, 10);
-        scene.add(gridHelper);
+        // const gridHelper = new THREE.GridHelper(2, 10);
+        // scene.add(gridHelper);
         
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
-            surface.rotation.y += 0.005;
+            surface.rotation.z += 0.005;
             renderer.render(scene, camera);
         }
         
