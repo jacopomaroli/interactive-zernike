@@ -89,7 +89,7 @@ class ZernikeVisualizer {
         // Create polynomial ordering number (bottom left)
         const orderingLabel = document.createElement('div');
         orderingLabel.className = 'ordering-label';
-        orderingLabel.textContent = `${index + 1}`;
+        orderingLabel.textContent = `${index}`;
         
         // Create Zernike term label (bottom right)
         const zernikeLabel = document.createElement('div');
@@ -459,24 +459,67 @@ class ZernikeVisualizer {
         directionalLight.position.set(1, 1, 1);
         scene.add(directionalLight);
         
-        // Create Zernike surface geometry
-        const geometry = new THREE.PlaneGeometry(2, 2, 500, 500);
-        const positions = geometry.attributes.position.array;
+        // Create circular Zernike surface geometry with smooth edges
+        const geometry = new THREE.BufferGeometry();
+        const resolution = 300; // Higher resolution for smoother edge
+        const vertices = [];
+        const indices = [];
         
-        for (let i = 0; i < positions.length; i += 3) {
-            const x = positions[i];
-            const y = positions[i+1];
-            const r = Math.sqrt(x*x + y*y);
-            
-            if (r <= 1) {
-                const theta = Math.atan2(y, x);
-                const z = this.calculateZernike(n, m, r, theta) * 0.5;
-                positions[i+2] = z;
-            } else {
-                positions[i+2] = 0;
+        // Generate vertices in a grid, but only keep those within unit circle
+        const vertexMap = new Map();
+        let vertexIndex = 0;
+        
+        for (let i = 0; i <= resolution; i++) {
+            for (let j = 0; j <= resolution; j++) {
+                // Convert grid coordinates to normalized coordinates [-1, 1]
+                const x = (i / resolution) * 2 - 1;
+                const y = (j / resolution) * 2 - 1;
+                const r = Math.sqrt(x*x + y*y);
+                
+                // Only include vertices within unit circle
+                if (r <= 1.0) {
+                    const theta = Math.atan2(y, x);
+                    const z = this.calculateZernike(n, m, r, theta) * 0.5;
+                    
+                    vertices.push(x, y, z);
+                    vertexMap.set(`${i},${j}`, vertexIndex++);
+                }
             }
         }
         
+        // Generate triangular faces with careful edge handling
+        for (let i = 0; i < resolution; i++) {
+            for (let j = 0; j < resolution; j++) {
+                const x = (i / resolution) * 2 - 1;
+                const y = (j / resolution) * 2 - 1;
+                const x1 = ((i+1) / resolution) * 2 - 1;
+                const y1 = ((j+1) / resolution) * 2 - 1;
+                
+                // Check if all four corners of the quad are within the circle
+                const r00 = Math.sqrt(x*x + y*y);
+                const r10 = Math.sqrt(x1*x1 + y*y);
+                const r01 = Math.sqrt(x*x + y1*y1);
+                const r11 = Math.sqrt(x1*x1 + y1*y1);
+                
+                // Get vertex indices
+                const idx00 = vertexMap.get(`${i},${j}`);
+                const idx10 = vertexMap.get(`${i+1},${j}`);
+                const idx01 = vertexMap.get(`${i},${j+1}`);
+                const idx11 = vertexMap.get(`${i+1},${j+1}`);
+                
+                // Create triangles only if all vertices exist
+                if (idx00 !== undefined && idx10 !== undefined && idx01 !== undefined) {
+                    indices.push(idx00, idx10, idx01);
+                }
+                
+                if (idx10 !== undefined && idx11 !== undefined && idx01 !== undefined) {
+                    indices.push(idx10, idx11, idx01);
+                }
+            }
+        }
+        
+        geometry.setIndex(indices);
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
         geometry.computeVertexNormals();
         
         // Create material with custom shader for Zernike coloring
