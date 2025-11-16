@@ -10,6 +10,16 @@ class ZernikeVisualizer {
         this.ctx2D = this.canvas2D.getContext('2d');
         this.canvas3DContainer = document.getElementById('canvas-3d-container');
         
+        // Create hidden WebGL canvas for high-quality preview rendering
+        this.hiddenCanvas = document.createElement('canvas');
+        this.hiddenCanvas.width = 280; // 2x the display width (140)
+        this.hiddenCanvas.height = 120; // 2x the display height (60)
+        this.hiddenCanvas.style.display = 'none';
+        document.body.appendChild(this.hiddenCanvas);
+        
+        // Initialize Three.js scene for preview rendering
+        this.initPreviewRenderer();
+        
         // Zernike modes information (ANSI standard indices)
         this.zernikeModes = [
             { n: 0, m: 0, name: "Piston", description: "Constant phase shift across the aperture." },
@@ -35,6 +45,34 @@ class ZernikeVisualizer {
     init() {
         this.createPyramid();
         this.setupEventListeners();
+    }
+    
+    initPreviewRenderer() {
+        // Set up Three.js scene for preview rendering
+        this.previewScene = new THREE.Scene();
+        // Set aspect ratio to match preview canvas (140x60 = 2.33:1)
+        this.previewCamera = new THREE.PerspectiveCamera(75, 140/60, 0.1, 1000);
+        this.previewRenderer = new THREE.WebGLRenderer({
+            canvas: this.hiddenCanvas,
+            antialias: true,
+            preserveDrawingBuffer: true,
+            alpha: true
+        });
+        // Match the aspect ratio of the destination canvas
+        this.previewRenderer.setSize(280, 120); // 2x resolution of 140x60
+        this.previewRenderer.setClearColor(0x000000, 0); // Transparent background
+        
+        // Add lights for preview
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        this.previewScene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        this.previewScene.add(directionalLight);
+        
+        // Position camera closer for larger preview (roughly twice as big)
+        this.previewCamera.position.set(1, 1, 1);
+        this.previewCamera.lookAt(0, 0, 0);
     }
     
     createPyramid() {
@@ -122,66 +160,90 @@ class ZernikeVisualizer {
     }
     
     drawZernikePreview3D(canvas, n, m) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-        const radius = 30;
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const scale = 10
+        // Create high-quality 3D geometry for this specific mode
+        const geometry = this.createZernikeGeometry(n, m, 100); // Lower res for previews
         
-        // Clear canvas with semi-transparent background
-        ctx.clearRect(0, 0, width, height);
+        // Create material with Zernike coloring
+        const material = new THREE.MeshPhongMaterial({
+            color: 0xffffff,
+            wireframe: false,
+            side: THREE.DoubleSide
+        });
         
-        // Draw the 3D representation with 45-degree perspective
-        const resolution = 300;
-        const cellSize = radius * 2 / resolution;
-        
-        // Draw the surface
-        for (let i = 0; i < resolution; i++) {
-            for (let j = 0; j < resolution; j++) {
-                const x = (i - resolution/2) * cellSize;
-                const y = (j - resolution/2) * cellSize;
-                const r = Math.sqrt(x*x + y*y) / radius;
+        // Apply custom shader for Zernike gradient coloring
+        material.onBeforeCompile = (shader) => {
+            shader.uniforms.minHeight = { value: -0.25 };
+            shader.uniforms.maxHeight = { value: 0.25 };
+            
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                `#include <common>
+                varying float vHeight;`
+            );
+            
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <begin_vertex>',
+                `#include <begin_vertex>
+                vHeight = position.z;`
+            );
+            
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                `#include <common>
+                varying float vHeight;
+                uniform float minHeight;
+                uniform float maxHeight;
                 
-                if (r <= 1) {
-                    const theta = Math.atan2(y, x);
-                    const z = this.calculateZernike(n, m, r, theta);
+                vec3 getZernikeColor(float height) {
+                    float t = clamp((height - minHeight) / (maxHeight - minHeight), 0.0, 1.0);
                     
-                    // Apply 45-degree perspective transformation
-                    const perspectiveX = x;
-                    const perspectiveY = y * 0.5 - z * scale;
-                    
-                    // Map value to color using traditional Zernike gradient
-                    const normalizedValue = z;
-                    const color = this.getZernikeColor(normalizedValue);
-                    
-                    ctx.fillStyle = color;
-                    ctx.fillRect(
-                        centerX + perspectiveX - cellSize/2, 
-                        centerY + perspectiveY - cellSize/2, 
-                        cellSize, 
-                        cellSize
-                    );
-                    
-                    // Draw wireframe
-                    // ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-                    // ctx.strokeRect(
-                    //     centerX + perspectiveX - cellSize/2, 
-                    //     centerY + perspectiveY - cellSize/2, 
-                    //     cellSize, 
-                    //     cellSize
-                    // );
-                }
-            }
-        }
+                    vec3 color;
+                    if (t < 0.25) {
+                        float localT = t / 0.25;
+                        color = mix(vec3(0.39, 0.39, 1.0), vec3(0.53, 0.81, 1.0), localT);
+                    } else if (t < 0.5) {
+                        float localT = (t - 0.25) / 0.25;
+                        color = mix(vec3(0.53, 0.81, 1.0), vec3(0.2, 0.8, 0.2), localT);
+                    } else if (t < 0.75) {
+                        float localT = (t - 0.5) / 0.25;
+                        color = mix(vec3(0.2, 0.8, 0.2), vec3(1.0, 1.0, 0.0), localT);
+                    } else {
+                        float localT = (t - 0.75) / 0.25;
+                        color = mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), localT);
+                    }
+                    return color;
+                }`
+            );
+            
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <color_fragment>',
+                `#include <color_fragment>
+                vec3 zernikeColor = getZernikeColor(vHeight);
+                diffuseColor.rgb *= zernikeColor;`
+            );
+        };
         
-        // Draw the base circle
-        // ctx.beginPath();
-        // ctx.ellipse(centerX, centerY, radius, radius * 0.5, 0, 0, 2 * Math.PI);
-        // ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-        // ctx.lineWidth = 1;
-        // ctx.stroke();
+        // Create temporary mesh
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = -Math.PI / 2; // Rotate to face up
+        
+        // Clear previous mesh from preview scene
+        this.previewScene.children = this.previewScene.children.filter(child => !(child instanceof THREE.Mesh));
+        
+        // Add mesh to preview scene
+        this.previewScene.add(mesh);
+        
+        // Render to hidden canvas
+        this.previewRenderer.render(this.previewScene, this.previewCamera);
+        
+        // Copy from hidden canvas to preview canvas
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(this.hiddenCanvas, 0, 0, canvas.width, canvas.height);
+        
+        // Clean up geometry
+        geometry.dispose();
+        material.dispose();
     }
     
     drawZernikePreview2D(canvas, n, m) {
@@ -230,6 +292,61 @@ class ZernikeVisualizer {
                 }
             }
         }
+    }
+    
+    createZernikeGeometry(n, m, resolution) {
+        // Create circular Zernike surface geometry
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices = [];
+        
+        // Generate vertices in a grid, but only keep those within unit circle
+        const vertexMap = new Map();
+        let vertexIndex = 0;
+        
+        for (let i = 0; i <= resolution; i++) {
+            for (let j = 0; j <= resolution; j++) {
+                // Convert grid coordinates to normalized coordinates [-1, 1]
+                const x = (i / resolution) * 2 - 1;
+                const y = (j / resolution) * 2 - 1;
+                const r = Math.sqrt(x*x + y*y);
+                
+                // Only include vertices within unit circle
+                if (r <= 1.0) {
+                    const theta = Math.atan2(y, x);
+                    const z = this.calculateZernike(n, m, r, theta) * 0.5;
+                    
+                    vertices.push(x, y, z);
+                    vertexMap.set(`${i},${j}`, vertexIndex++);
+                }
+            }
+        }
+        
+        // Generate triangular faces
+        for (let i = 0; i < resolution; i++) {
+            for (let j = 0; j < resolution; j++) {
+                // Get vertex indices
+                const idx00 = vertexMap.get(`${i},${j}`);
+                const idx10 = vertexMap.get(`${i+1},${j}`);
+                const idx01 = vertexMap.get(`${i},${j+1}`);
+                const idx11 = vertexMap.get(`${i+1},${j+1}`);
+                
+                // Create triangles only if all vertices exist
+                if (idx00 !== undefined && idx10 !== undefined && idx01 !== undefined) {
+                    indices.push(idx00, idx10, idx01);
+                }
+                
+                if (idx10 !== undefined && idx11 !== undefined && idx01 !== undefined) {
+                    indices.push(idx10, idx11, idx01);
+                }
+            }
+        }
+        
+        geometry.setIndex(indices);
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.computeVertexNormals();
+        
+        return geometry;
     }
     
     calculateZernike(n, m, r, theta) {
@@ -459,68 +576,8 @@ class ZernikeVisualizer {
         directionalLight.position.set(1, 1, 1);
         scene.add(directionalLight);
         
-        // Create circular Zernike surface geometry with smooth edges
-        const geometry = new THREE.BufferGeometry();
-        const resolution = 300; // Higher resolution for smoother edge
-        const vertices = [];
-        const indices = [];
-        
-        // Generate vertices in a grid, but only keep those within unit circle
-        const vertexMap = new Map();
-        let vertexIndex = 0;
-        
-        for (let i = 0; i <= resolution; i++) {
-            for (let j = 0; j <= resolution; j++) {
-                // Convert grid coordinates to normalized coordinates [-1, 1]
-                const x = (i / resolution) * 2 - 1;
-                const y = (j / resolution) * 2 - 1;
-                const r = Math.sqrt(x*x + y*y);
-                
-                // Only include vertices within unit circle
-                if (r <= 1.0) {
-                    const theta = Math.atan2(y, x);
-                    const z = this.calculateZernike(n, m, r, theta) * 0.5;
-                    
-                    vertices.push(x, y, z);
-                    vertexMap.set(`${i},${j}`, vertexIndex++);
-                }
-            }
-        }
-        
-        // Generate triangular faces with careful edge handling
-        for (let i = 0; i < resolution; i++) {
-            for (let j = 0; j < resolution; j++) {
-                const x = (i / resolution) * 2 - 1;
-                const y = (j / resolution) * 2 - 1;
-                const x1 = ((i+1) / resolution) * 2 - 1;
-                const y1 = ((j+1) / resolution) * 2 - 1;
-                
-                // Check if all four corners of the quad are within the circle
-                const r00 = Math.sqrt(x*x + y*y);
-                const r10 = Math.sqrt(x1*x1 + y*y);
-                const r01 = Math.sqrt(x*x + y1*y1);
-                const r11 = Math.sqrt(x1*x1 + y1*y1);
-                
-                // Get vertex indices
-                const idx00 = vertexMap.get(`${i},${j}`);
-                const idx10 = vertexMap.get(`${i+1},${j}`);
-                const idx01 = vertexMap.get(`${i},${j+1}`);
-                const idx11 = vertexMap.get(`${i+1},${j+1}`);
-                
-                // Create triangles only if all vertices exist
-                if (idx00 !== undefined && idx10 !== undefined && idx01 !== undefined) {
-                    indices.push(idx00, idx10, idx01);
-                }
-                
-                if (idx10 !== undefined && idx11 !== undefined && idx01 !== undefined) {
-                    indices.push(idx10, idx11, idx01);
-                }
-            }
-        }
-        
-        geometry.setIndex(indices);
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        geometry.computeVertexNormals();
+        // Create circular Zernike surface geometry using shared method
+        const geometry = this.createZernikeGeometry(n, m, 300); // High resolution for main view
         
         // Create material with custom shader for Zernike coloring
         const material = new THREE.MeshPhongMaterial({
