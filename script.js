@@ -479,12 +479,73 @@ class ZernikeVisualizer {
         
         geometry.computeVertexNormals();
         
-        // Create material with color based on height
+        // Create material with custom shader for Zernike coloring
         const material = new THREE.MeshPhongMaterial({
-            color: 0x2196F3,
+            color: 0xffffff,
             wireframe: false,
             side: THREE.DoubleSide
         });
+        
+        // Modify the shader to apply Zernike gradient coloring
+        material.onBeforeCompile = (shader) => {
+            // Add custom uniforms
+            shader.uniforms.minHeight = { value: -0.5 };
+            shader.uniforms.maxHeight = { value: 0.5 };
+            
+            // Modify vertex shader to pass height to fragment shader
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                `#include <common>
+                varying float vHeight;`
+            );
+            
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <begin_vertex>',
+                `#include <begin_vertex>
+                vHeight = position.z;`
+            );
+            
+            // Modify fragment shader to apply Zernike coloring
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                `#include <common>
+                varying float vHeight;
+                uniform float minHeight;
+                uniform float maxHeight;
+                
+                vec3 getZernikeColor(float height) {
+                    // Normalize height to [0, 1] range
+                    float t = clamp((height - minHeight) / (maxHeight - minHeight), 0.0, 1.0);
+                    
+                    vec3 color;
+                    if (t < 0.25) {
+                        // Blue to Light Blue
+                        float localT = t / 0.25;
+                        color = mix(vec3(0.39, 0.39, 1.0), vec3(0.53, 0.81, 1.0), localT);
+                    } else if (t < 0.5) {
+                        // Light Blue to Green
+                        float localT = (t - 0.25) / 0.25;
+                        color = mix(vec3(0.53, 0.81, 1.0), vec3(0.2, 0.8, 0.2), localT);
+                    } else if (t < 0.75) {
+                        // Green to Yellow
+                        float localT = (t - 0.5) / 0.25;
+                        color = mix(vec3(0.2, 0.8, 0.2), vec3(1.0, 1.0, 0.0), localT);
+                    } else {
+                        // Yellow to Red
+                        float localT = (t - 0.75) / 0.25;
+                        color = mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), localT);
+                    }
+                    return color;
+                }`
+            );
+            
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <color_fragment>',
+                `#include <color_fragment>
+                vec3 zernikeColor = getZernikeColor(vHeight);
+                diffuseColor.rgb *= zernikeColor;`
+            );
+        };
         
         const surface = new THREE.Mesh(geometry, material);
         scene.add(surface);
