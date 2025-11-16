@@ -16,7 +16,6 @@ header {
     text-align: center;
     padding: 2rem 1rem;
     background-color: rgba(255, 255, 255, 0.8);
-    margin-bottom: 2rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
@@ -43,7 +42,11 @@ header p {
 .pyramid-row {
     display: flex;
     justify-content: center;
-    margin-bottom: 10px;
+    gap: 120px;
+}
+
+.pyramid-row:not(:first-child) {
+    margin-top: -60px;
 }
 
 .zernike-mode {
@@ -244,6 +247,14 @@ header p {
     .zernike-mode {
         width: 90px;
         height: 90px;
+    }
+    
+    .pyramid-row {
+        gap: 90px;
+    }
+    
+    .pyramid-row:not(:first-child) {
+        margin-top: -45px;
     }
     
     .visualization-container {
