@@ -86,15 +86,28 @@ class ZernikeVisualizer {
         canvas2D.width = 140;
         canvas2D.height = 30;
         
-        // Create label
-        const label = document.createElement('div');
-        label.className = 'mode-label';
-        label.textContent = `Z${index}`;
+        // Create polynomial ordering number (bottom left)
+        const orderingLabel = document.createElement('div');
+        orderingLabel.className = 'ordering-label';
+        orderingLabel.textContent = `${index + 1}`;
+        
+        // Create Zernike term label (bottom right)
+        const zernikeLabel = document.createElement('div');
+        zernikeLabel.className = 'zernike-label';
+        // Format as Z with subscript n and superscript m
+        zernikeLabel.innerHTML = `Z<sub>${n}</sub><sup>${m >= 0 ? m : Math.abs(m)}</sup>${m < 0 ? '⁻' : ''}`;
+        
+        // Create aberration name (underneath)
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'name-label';
+        nameLabel.textContent = mode.name;
         
         previewContainer.appendChild(canvas3D);
         previewContainer.appendChild(canvas2D);
         modeElement.appendChild(previewContainer);
-        modeElement.appendChild(label);
+        modeElement.appendChild(orderingLabel);
+        modeElement.appendChild(zernikeLabel);
+        modeElement.appendChild(nameLabel);
         
         // Draw previews
         this.drawZernikePreview3D(canvas3D, n, m);
