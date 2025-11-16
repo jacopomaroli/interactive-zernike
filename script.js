@@ -151,11 +151,9 @@ class ZernikeVisualizer {
                     const perspectiveX = x;
                     const perspectiveY = y * 0.5 - z;
                     
-                    // Map value to color
-                    const intensity = Math.abs(z) * 3;
-                    const color = z >= 0 
-                        ? `rgba(255, 100, 100, ${intensity})` 
-                        : `rgba(100, 100, 255, ${intensity})`;
+                    // Map value to color using traditional Zernike gradient
+                    const normalizedValue = z / 7;
+                    const color = this.getZernikeColor(normalizedValue);
                     
                     ctx.fillStyle = color;
                     ctx.fillRect(
@@ -218,11 +216,8 @@ class ZernikeVisualizer {
                     const theta = Math.atan2(y * 2, x); // Adjust theta for ellipse
                     const value = this.calculateZernike(n, m, r, theta);
                     
-                    // Map value to color
-                    const intensity = Math.abs(value);
-                    const color = value >= 0 
-                        ? `rgba(255, 0, 0, ${intensity})` 
-                        : `rgba(0, 0, 255, ${intensity})`;
+                    // Map value to color using traditional Zernike gradient
+                    const color = this.getZernikeColor(value);
                     
                     ctx.fillStyle = color;
                     ctx.fillRect(
@@ -264,6 +259,48 @@ class ZernikeVisualizer {
             result *= i;
         }
         return result;
+    }
+    
+    getZernikeColor(value) {
+        // Normalize value to [-1, 1] range
+        const normalizedValue = Math.max(-1, Math.min(1, value));
+        
+        // Map to [0, 1] range for gradient calculation
+        const t = (normalizedValue + 1) / 2;
+        
+        let r, g, b, alpha;
+        
+        if (t < 0.25) {
+            // Blue to Light Blue
+            const localT = t / 0.25;
+            r = Math.round(100 * (1 - localT) + 135 * localT);
+            g = Math.round(100 * (1 - localT) + 206 * localT);
+            b = Math.round(255);
+            alpha = 0.7 + 0.3 * Math.abs(normalizedValue);
+        } else if (t < 0.5) {
+            // Light Blue to Green
+            const localT = (t - 0.25) / 0.25;
+            r = Math.round(135 * (1 - localT) + 50 * localT);
+            g = Math.round(206 * (1 - localT) + 205 * localT);
+            b = Math.round(255 * (1 - localT) + 50 * localT);
+            alpha = 0.7 + 0.3 * Math.abs(normalizedValue);
+        } else if (t < 0.75) {
+            // Green to Yellow
+            const localT = (t - 0.5) / 0.25;
+            r = Math.round(50 * (1 - localT) + 255 * localT);
+            g = Math.round(205 * (1 - localT) + 255 * localT);
+            b = Math.round(50 * (1 - localT) + 0 * localT);
+            alpha = 0.7 + 0.3 * Math.abs(normalizedValue);
+        } else {
+            // Yellow to Red
+            const localT = (t - 0.75) / 0.25;
+            r = Math.round(255);
+            g = Math.round(255 * (1 - localT) + 0 * localT);
+            b = Math.round(0);
+            alpha = 0.7 + 0.3 * Math.abs(normalizedValue);
+        }
+        
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
     
     setupEventListeners() {
@@ -326,11 +363,8 @@ class ZernikeVisualizer {
                     const theta = Math.atan2(y, x);
                     const value = this.calculateZernike(n, m, r, theta);
                     
-                    // Map value to color with better contrast
-                    const intensity = Math.min(Math.abs(value) * 1.5, 1);
-                    const color = value >= 0 
-                        ? `rgba(255, 100, 100, ${intensity})` 
-                        : `rgba(100, 100, 255, ${intensity})`;
+                    // Map value to color using traditional Zernike gradient
+                    const color = this.getZernikeColor(value);
                     
                     this.ctx2D.fillStyle = color;
                     this.ctx2D.fillRect(
