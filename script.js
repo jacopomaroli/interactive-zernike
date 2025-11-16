@@ -128,12 +128,13 @@ class ZernikeVisualizer {
         const radius = 30;
         const centerX = width / 2;
         const centerY = height / 2;
+        const scale = 10
         
         // Clear canvas with semi-transparent background
         ctx.clearRect(0, 0, width, height);
         
         // Draw the 3D representation with 45-degree perspective
-        const resolution = 200;
+        const resolution = 300;
         const cellSize = radius * 2 / resolution;
         
         // Draw the surface
@@ -145,14 +146,14 @@ class ZernikeVisualizer {
                 
                 if (r <= 1) {
                     const theta = Math.atan2(y, x);
-                    const z = this.calculateZernike(n, m, r, theta) * 7;
+                    const z = this.calculateZernike(n, m, r, theta);
                     
                     // Apply 45-degree perspective transformation
                     const perspectiveX = x;
-                    const perspectiveY = y * 0.5 - z;
+                    const perspectiveY = y * 0.5 - z * scale;
                     
                     // Map value to color using traditional Zernike gradient
-                    const normalizedValue = z / 7;
+                    const normalizedValue = z;
                     const color = this.getZernikeColor(normalizedValue);
                     
                     ctx.fillStyle = color;
