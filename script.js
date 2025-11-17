@@ -71,7 +71,7 @@ class ZernikeVisualizer {
         this.previewScene.add(directionalLight);
         
         // Position camera closer for larger preview (roughly twice as big)
-        this.previewCamera.position.set(1, 1, 1);
+        this.previewCamera.position.set(1.1, 1.1, 1.1);
         this.previewCamera.lookAt(0, 0, 0);
     }
     
@@ -225,7 +225,8 @@ class ZernikeVisualizer {
         
         // Create temporary mesh
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2; // Rotate to face up
+        mesh.rotation.x = -90 * (Math.PI / 180); // Rotate to face up
+        mesh.rotation.z = 45 * (Math.PI / 180); // Rotate to face up
         
         // Clear previous mesh from preview scene
         this.previewScene.children = this.previewScene.children.filter(child => !(child instanceof THREE.Mesh));
@@ -250,7 +251,7 @@ class ZernikeVisualizer {
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
         const height = canvas.height;
-        const radius = 30;
+        const radius = 25;
         const centerX = width / 2;
         const centerY = height / 2;
         
@@ -562,125 +563,135 @@ class ZernikeVisualizer {
         canvas3D.style.height = '100%';
         this.canvas3DContainer.appendChild(canvas3D);
         
-        // Set up Three.js scene
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true });
-        renderer.setSize(500, 500);
-        
-        // Add lights
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(1, 1, 1);
-        scene.add(directionalLight);
-        
-        // Create circular Zernike surface geometry using shared method
-        const geometry = this.createZernikeGeometry(n, m, 300); // High resolution for main view
-        
-        // Create material with custom shader for Zernike coloring
-        const material = new THREE.MeshPhongMaterial({
-            color: 0xffffff,
-            wireframe: false,
-            side: THREE.DoubleSide
-        });
-        
-        // Modify the shader to apply Zernike gradient coloring
-        material.onBeforeCompile = (shader) => {
-            // Add custom uniforms
-            shader.uniforms.minHeight = { value: -0.5 };
-            shader.uniforms.maxHeight = { value: 0.5 };
+        // Wait for the container to be properly sized, then get dimensions
+        setTimeout(() => {
+            const containerRect = this.canvas3DContainer.getBoundingClientRect();
+            const width = containerRect.width || 300; // Fallback to 300px
+            const height = containerRect.height || 300; // Fallback to 300px
             
-            // Modify vertex shader to pass height to fragment shader
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <common>',
-                `#include <common>
-                varying float vHeight;`
-            );
+            // Set up Three.js scene
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true });
+            renderer.setSize(width, height);
+        
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
             
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <begin_vertex>',
-                `#include <begin_vertex>
-                vHeight = position.z;`
-            );
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
             
-            // Modify fragment shader to apply Zernike coloring
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <common>',
-                `#include <common>
-                varying float vHeight;
-                uniform float minHeight;
-                uniform float maxHeight;
+            // Create circular Zernike surface geometry using shared method
+            const geometry = this.createZernikeGeometry(n, m, 300); // High resolution for main view
+            
+            // Create material with custom shader for Zernike coloring
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xffffff,
+                wireframe: false,
+                side: THREE.DoubleSide
+            });
+            
+            // Modify the shader to apply Zernike gradient coloring
+            material.onBeforeCompile = (shader) => {
+                // Add custom uniforms
+                shader.uniforms.minHeight = { value: -0.5 };
+                shader.uniforms.maxHeight = { value: 0.5 };
                 
-                vec3 getZernikeColor(float height) {
-                    // Normalize height to [0, 1] range
-                    float t = clamp((height - minHeight) / (maxHeight - minHeight), 0.0, 1.0);
+                // Modify vertex shader to pass height to fragment shader
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    varying float vHeight;`
+                );
+                
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `#include <begin_vertex>
+                    vHeight = position.z;`
+                );
+                
+                // Modify fragment shader to apply Zernike coloring
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    varying float vHeight;
+                    uniform float minHeight;
+                    uniform float maxHeight;
                     
-                    vec3 color;
-                    if (t < 0.25) {
-                        // Blue to Light Blue
-                        float localT = t / 0.25;
-                        color = mix(vec3(0.39, 0.39, 1.0), vec3(0.53, 0.81, 1.0), localT);
-                    } else if (t < 0.5) {
-                        // Light Blue to Green
-                        float localT = (t - 0.25) / 0.25;
-                        color = mix(vec3(0.53, 0.81, 1.0), vec3(0.2, 0.8, 0.2), localT);
-                    } else if (t < 0.75) {
-                        // Green to Yellow
-                        float localT = (t - 0.5) / 0.25;
-                        color = mix(vec3(0.2, 0.8, 0.2), vec3(1.0, 1.0, 0.0), localT);
-                    } else {
-                        // Yellow to Red
-                        float localT = (t - 0.75) / 0.25;
-                        color = mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), localT);
-                    }
-                    return color;
-                }`
-            );
+                    vec3 getZernikeColor(float height) {
+                        // Normalize height to [0, 1] range
+                        float t = clamp((height - minHeight) / (maxHeight - minHeight), 0.0, 1.0);
+                        
+                        vec3 color;
+                        if (t < 0.25) {
+                            // Blue to Light Blue
+                            float localT = t / 0.25;
+                            color = mix(vec3(0.39, 0.39, 1.0), vec3(0.53, 0.81, 1.0), localT);
+                        } else if (t < 0.5) {
+                            // Light Blue to Green
+                            float localT = (t - 0.25) / 0.25;
+                            color = mix(vec3(0.53, 0.81, 1.0), vec3(0.2, 0.8, 0.2), localT);
+                        } else if (t < 0.75) {
+                            // Green to Yellow
+                            float localT = (t - 0.5) / 0.25;
+                            color = mix(vec3(0.2, 0.8, 0.2), vec3(1.0, 1.0, 0.0), localT);
+                        } else {
+                            // Yellow to Red
+                            float localT = (t - 0.75) / 0.25;
+                            color = mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), localT);
+                        }
+                        return color;
+                    }`
+                );
+                
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <color_fragment>',
+                    `#include <color_fragment>
+                    vec3 zernikeColor = getZernikeColor(vHeight);
+                    diffuseColor.rgb *= zernikeColor;`
+                );
+            };
             
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <color_fragment>',
-                `#include <color_fragment>
-                vec3 zernikeColor = getZernikeColor(vHeight);
-                diffuseColor.rgb *= zernikeColor;`
-            );
-        };
-        
-        const surface = new THREE.Mesh(geometry, material);
-        
-        // Rotate the surface 90 degrees around X-axis to face upward
-        surface.rotation.x = -Math.PI / 2;
-        
-        scene.add(surface);
-        
-        // Position camera at 45-degree angle
-        camera.position.set(2, 2, 2);
-        camera.lookAt(0, 0, 0);
-        
-        // Add axes helper
-        const axesHelper = new THREE.AxesHelper(1.5);
-        scene.add(axesHelper);
-        
-        // Add grid helper for better spatial reference
-        // const gridHelper = new THREE.GridHelper(2, 10);
-        // scene.add(gridHelper);
-        
-        // Animation loop
-        function animate() {
-            requestAnimationFrame(animate);
-            surface.rotation.z += 0.005;
-            renderer.render(scene, camera);
-        }
-        
-        animate();
-        
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            camera.aspect = this.canvas3DContainer.clientWidth / this.canvas3DContainer.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(this.canvas3DContainer.clientWidth, this.canvas3DContainer.clientHeight);
-        });
+            const surface = new THREE.Mesh(geometry, material);
+            
+            // Rotate the surface 90 degrees around X-axis to face upward
+            surface.rotation.x = -Math.PI / 2;
+            
+            scene.add(surface);
+            
+            // Position camera at 45-degree angle
+            camera.position.set(2, 2, 2);
+            camera.lookAt(0, 0, 0);
+            
+            // Add axes helper
+            const axesHelper = new THREE.AxesHelper(1.5);
+            scene.add(axesHelper);
+            
+            // Add grid helper for better spatial reference
+            // const gridHelper = new THREE.GridHelper(2, 10);
+            // scene.add(gridHelper);
+            
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                surface.rotation.z += 0.005;
+                renderer.render(scene, camera);
+            }
+            
+            animate();
+            
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                const newRect = this.canvas3DContainer.getBoundingClientRect();
+                const newWidth = newRect.width || 300;
+                const newHeight = newRect.height || 300;
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(newWidth, newHeight);
+            });
+        }, 0); // Use setTimeout with 0ms to let the DOM update first
     }
 }
 
