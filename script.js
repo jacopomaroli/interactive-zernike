@@ -164,10 +164,14 @@ class ZernikeVisualizer {
         const geometry = this.createZernikeGeometry(n, m, 100); // Lower res for previews
         
         // Create material with Zernike coloring
-        const material = new THREE.MeshPhongMaterial({
+        const material = new THREE.MeshPhysicalMaterial({
             color: 0xffffff,
             wireframe: false,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
+            metalness: 0.3,
+            roughness: 0,
+            reflectivity: 0,
+            specular: 0xffffff,
         });
         
         // Apply custom shader for Zernike gradient coloring
@@ -269,15 +273,23 @@ class ZernikeVisualizer {
         // Calculate Zernike values
         const resolution = 200;
         const cellSize = radius * 2 / resolution;
+        const rotation = 180
         
         for (let i = 0; i < resolution; i++) {
             for (let j = 0; j < resolution; j++) {
-                const x = (i - resolution/2) * cellSize;
-                const y = (j - resolution/2) * cellSize * 0.5; // Compress for perspective
-                const r = Math.sqrt(x*x + y*y*4) / radius; // Adjust for ellipse
+                let x = (i - resolution/2) * cellSize;
+                let y = (j - resolution/2) * cellSize * 0.5; // Compress for perspective
+                
+                // Apply the same rotation as 3D mesh (rotation.z = 45°)
+                const cos45 = Math.cos(rotation * Math.PI / 180);
+                const sin45 = Math.sin(rotation * Math.PI / 180);
+                const xRotated = x * cos45 - (y * 2) * sin45;
+                const yRotated = x * sin45 + (y * 2) * cos45;
+                
+                const r = Math.sqrt(xRotated*xRotated + yRotated*yRotated) / radius;
                 
                 if (r <= 1) {
-                    const theta = Math.atan2(y * 2, x); // Adjust theta for ellipse
+                    const theta = Math.atan2(yRotated, xRotated);
                     const value = this.calculateZernike(n, m, r, theta);
                     
                     // Map value to color using traditional Zernike gradient
@@ -300,6 +312,7 @@ class ZernikeVisualizer {
         const geometry = new THREE.BufferGeometry();
         const vertices = [];
         const indices = [];
+        const scale = 0.7
         
         // Generate vertices in a grid, but only keep those within unit circle
         const vertexMap = new Map();
@@ -315,7 +328,7 @@ class ZernikeVisualizer {
                 // Only include vertices within unit circle
                 if (r <= 1.0) {
                     const theta = Math.atan2(y, x);
-                    const z = this.calculateZernike(n, m, r, theta) * 0.5;
+                    const z = this.calculateZernike(n, m, r, theta) * scale;
                     
                     vertices.push(x, y, z);
                     vertexMap.set(`${i},${j}`, vertexIndex++);
